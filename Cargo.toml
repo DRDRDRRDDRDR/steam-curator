@@ -50,6 +50,9 @@ native-windows-gui = { version = "1.0.13", optional = true, default-features = f
     "list-view",
     "tabs",
     "fancy-window",
+    # 高 DPI：让 NWG 在 init 时声明 DPI 感知，并暴露 nwg::scale_factor()
+    # 供手工布局按比例缩放（不启用的话文本在缩放显示器上会被位图拉伸、发虚）
+    "high-dpi",
 ] }
 
 [profile.release]
