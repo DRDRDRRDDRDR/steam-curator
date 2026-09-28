@@ -20,10 +20,8 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         var boot = new StringBuilder();
-        boot.AppendLine("steam-curator  前端：Avalonia　后端：Rust CLI");
+        boot.AppendLine("steam-curator　前端：Avalonia　·　后端：Rust CLI");
         boot.AppendLine(new string('─', 56));
-        boot.AppendLine($"后端程序　{CliPath()}");
-        boot.AppendLine($"输出目录　{_cli.OutDir}");
         boot.AppendLine();
         boot.AppendLine("使用顺序：");
         boot.AppendLine("  ① 扫描 Steam 库");
@@ -31,12 +29,12 @@ public partial class MainWindow : Window
         boot.AppendLine("  ③ 把 AI 的回复整段粘到下方输入框，点「校验 AI 回复」");
         boot.AppendLine("  ④ 打开预览报告确认效果");
         boot.AppendLine("  ⑤ 演练写回（不改文件）→ ⑥ 正式写回");
+        boot.AppendLine();
+        boot.AppendLine("输出目录＝仓库根下的 output/，点左下「打开输出目录」直接打开它。");
         LogBox.Text = boot.ToString();
 
         RefreshStatus();
     }
-
-    private string CliPath() => _cli.CliPath;
 
     // ── 状态栏 ────────────────────────────────────────────────
 
