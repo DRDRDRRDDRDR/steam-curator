@@ -1,0 +1,110 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="SteamCurator.Gui.App"
+             RequestedThemeVariant="Dark">
+
+  <!--
+    配色遵循 Avalonia / Fluent 的语义化命名：先覆盖 SystemAccentColor，
+    FluentTheme 的 .accent 按钮、选中态、焦点框都会自动跟着变；
+    其余用自定义资源表达「深色卡片 + 强调色」的层级。
+  -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <Color x:Key="SystemAccentColor">#3B8FE0</Color>
+      <Color x:Key="SystemAccentColorLight1">#5AA6EA</Color>
+      <Color x:Key="SystemAccentColorDark1">#2A70B8</Color>
+
+      <SolidColorBrush x:Key="AppBackgroundBrush" Color="#0B1119" />
+      <!-- 卡片比 Fluent 深色主题的按钮填充(约 #242830)更暗，按钮才会「浮」出来 -->
+      <SolidColorBrush x:Key="CardBackgroundBrush" Color="#121A24" />
+      <SolidColorBrush x:Key="CardBorderBrush" Color="#27364A" />
+      <SolidColorBrush x:Key="CardBorderAccentBrush" Color="#2F6FA8" />
+      <SolidColorBrush x:Key="MutedTextBrush" Color="#9DB0C6" />
+      <SolidColorBrush x:Key="DropZoneBrush" Color="#101B28" />
+
+      <!--
+        覆盖 Fluent 的主题资源键：输入框的占位文字（Watermark）默认太暗，
+        在深色底上几乎读不出来。改名后其余控件（按钮文字、焦点框）也一并提亮。
+      -->
+      <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#93A7BF" />
+      <SolidColorBrush x:Key="TextControlBackground" Color="#16202D" />
+      <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#1B2735" />
+      <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#16202D" />
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <!-- FluentTheme 提供现代控件外观（圆角、悬停高亮、焦点环、滚动条），不要自己重画控件模板 -->
+    <FluentTheme />
+
+    <!-- 卡片：统一的圆角/内边距/描边 -->
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <!-- 「粘贴区」：用强调色描边把它从其它卡片里凸显出来 -->
+    <Style Selector="Border.dropzone">
+      <Setter Property="Background" Value="{DynamicResource DropZoneBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderAccentBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="14" />
+    </Style>
+
+    <!-- 左侧导航按钮：只改排版，颜色交给 FluentTheme，悬停/按下才有原生反馈 -->
+    <Style Selector="Button.nav">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Padding" Value="12,9" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+
+    <!--
+      主按钮（「正式写回」）。按 x:Name 直接命中，不依赖 class 组合的匹配顺序；
+      同时覆盖 Button 自身与模板内的 ContentPresenter，保证默认/悬停/按下三态都是强调色，
+      否则一悬停就会退回主题的灰色。
+    -->
+    <Style Selector="Button#BtnWrite">
+      <Setter Property="Background" Value="#2F7FD0" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button#BtnWrite /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#2F7FD0" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+    </Style>
+    <Style Selector="Button#BtnWrite:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#3C90E4" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+    </Style>
+    <Style Selector="Button#BtnWrite:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#25659F" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+    </Style>
+
+    <!-- 文本层级 -->
+    <Style Selector="TextBlock.h1">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.sub">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.section">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+      <Setter Property="Margin" Value="0,10,0,6" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </Application.Styles>
+</Application>

@@ -1,6 +1,10 @@
 # Rust 构建产物
 /target
 
+# Avalonia 前端的构建产物
+/gui-avalonia/bin/
+/gui-avalonia/obj/
+
 # 运行期产出：包含个人 Steam 库数据、AI 方案与 HTML 报告，绝不入库
 /output/
 /data/

@@ -1,0 +1,91 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SteamCurator.Gui.MainWindow"
+        Title="steam-curator — Steam 库整理器"
+        Width="1120" Height="800" MinWidth="920" MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource AppBackgroundBrush}"
+        FontFamily="Inter, Microsoft YaHei UI">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- ── 头部 ─────────────────────────────────────────────── -->
+    <Border Grid.Row="0"
+            Background="{DynamicResource CardBackgroundBrush}"
+            BorderBrush="{DynamicResource CardBorderBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="24,16">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Grid.Column="0" Spacing="3">
+          <TextBlock Classes="h1" Text="steam-curator" />
+          <TextBlock Classes="sub"
+                     Text="Steam 库整理器　·　本地扫描 → 交给 AI 分类 → 校验 → 预览 → 写回合集" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <TextBlock x:Name="StatusPlan" Classes="sub" HorizontalAlignment="Right" />
+          <TextBlock x:Name="StatusSteam" Classes="sub" HorizontalAlignment="Right" />
+          <ProgressBar x:Name="Busy" IsIndeterminate="True" IsVisible="False"
+                       Height="3" Width="180" Margin="0,6,0,0"
+                       HorizontalAlignment="Right" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ── 主体 ─────────────────────────────────────────────── -->
+    <Grid Grid.Row="1" ColumnDefinitions="276,*" Margin="16">
+
+      <!-- 左：操作导航 -->
+      <Border Grid.Column="0" Classes="card" Padding="12">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock Classes="section" Text="①  准备" />
+            <Button x:Name="BtnScan" Classes="nav" Content="扫描 Steam 库" Click="OnScan" />
+            <Button x:Name="BtnPrompt" Classes="nav" Content="生成 AI Prompt" Click="OnPrompt" />
+            <Button x:Name="BtnCopy" Classes="nav" Content="复制 Prompt 到剪贴板" Click="OnCopyPrompt" />
+
+            <TextBlock Classes="section" Text="②  整理" />
+            <Button x:Name="BtnPlan" Classes="nav" Content="校验 AI 回复" Click="OnPlan" />
+            <Button x:Name="BtnPreview" Classes="nav" Content="打开预览报告" Click="OnPreview" />
+
+            <TextBlock Classes="section" Text="③  写回" />
+            <Button x:Name="BtnDry" Classes="nav" Content="演练写回（不改文件）" Click="OnDryRun" />
+            <Button x:Name="BtnWrite" Classes="nav accent" Content="正式写回" Click="OnWrite" />
+            <Button x:Name="BtnRestore" Classes="nav" Content="回滚最近备份" Click="OnRestore" />
+
+            <TextBlock Classes="section" Text="④  其它" />
+            <Button x:Name="BtnInspect" Classes="nav" Content="查看库现状（只读）" Click="OnInspect" />
+            <Button x:Name="BtnOpenOut" Classes="nav" Content="打开输出目录" Click="OnOpenOutDir" />
+            <Button x:Name="BtnClear" Classes="nav" Content="清空日志" Click="OnClear" />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <!-- 右：日志 + 粘贴区 -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto" Margin="16,0,0,0">
+
+        <TextBlock Grid.Row="0" Classes="section" Text="运行日志 / 结果" Margin="0,0,0,6" />
+        <TextBox Grid.Row="1"
+                 x:Name="LogBox"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 VerticalContentAlignment="Top"
+                 FontFamily="Consolas, Microsoft YaHei UI"
+                 FontSize="13" />
+
+        <TextBlock Grid.Row="2" Classes="section"
+                   Text="把 AI 的回复整段粘到这里 ↓　然后点「校验 AI 回复」" />
+
+        <Border Grid.Row="3" Classes="dropzone" Height="228" VerticalAlignment="Top">
+          <TextBox x:Name="ReplyBox"
+                   AcceptsReturn="True"
+                   TextWrapping="Wrap"
+                   VerticalContentAlignment="Top"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Watermark="在此粘贴 AI 的回复（含 ``` 围栏、前后寒暄都没关系）" />
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>
