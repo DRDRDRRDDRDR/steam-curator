@@ -1,0 +1,12 @@
+# Rust 构建产物
+/target
+
+# 运行期产出：包含个人 Steam 库数据、AI 方案与 HTML 报告，绝不入库
+/output/
+/data/
+*.log
+
+# 编辑器
+.vscode/
+.idea/
+*.swp

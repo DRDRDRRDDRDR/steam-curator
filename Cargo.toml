@@ -1,0 +1,24 @@
+[package]
+name = "steam-curator"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Steam 库整理器：本地扫描 → AI 整理 → 预览 → 写回 Steam 合集"
+license = "MIT"
+repository = "https://github.com/DRDRDRRDDRDR/steam-curator"
+keywords = ["steam", "library", "collections", "cli"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "steam-curator"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
