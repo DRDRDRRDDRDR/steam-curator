@@ -142,6 +142,10 @@ pub struct ScanArgs<'a> {
     pub steam_dir: Option<&'a str>,
     pub user: Option<&'a str>,
     pub write_csv: bool,
+    /// 是否把「已拥有但未安装」的游戏也纳入（默认开；CLI 用 `--installed-only` 关掉）。
+    ///
+    /// 关掉之后只统计已安装的，省掉读 45 MB 的 `appinfo.vdf`。
+    pub include_uninstalled: bool,
 }
 
 pub fn do_scan(out: &Path, args: &ScanArgs) -> Result<Outcome, String> {
@@ -152,6 +156,7 @@ pub fn do_scan(out: &Path, args: &ScanArgs) -> Result<Outcome, String> {
     let scanned = scan::run(&ScanOptions {
         steam_dir: args.steam_dir.map(|s| s.to_string()),
         user: args.user.map(|s| s.to_string()),
+        include_uninstalled: args.include_uninstalled,
     })?;
     let lib = &scanned.library;
 
@@ -176,8 +181,10 @@ pub fn do_scan(out: &Path, args: &ScanArgs) -> Result<Outcome, String> {
     }
     let s = scan::summarize(lib);
     o.say(format!(
-        "  共 {} 款游戏 · {} · 累计 {}",
+        "  共 {} 款游戏（已安装 {} · 已拥有未安装 {}）· {} · 累计 {}",
         s.games,
+        s.installed,
+        s.uninstalled,
         util::fmt_size(s.total_size),
         util::fmt_duration(s.total_playtime_minutes)
     ));
@@ -207,6 +214,8 @@ pub struct PromptArgs<'a> {
     pub max_name: usize,
     pub include_json: bool,
     pub mode: &'a str,
+    /// 游戏表最多列多少行；0 = 不限
+    pub max_games: usize,
 }
 
 impl Default for PromptArgs<'_> {
@@ -217,6 +226,7 @@ impl Default for PromptArgs<'_> {
             max_name: 14,
             include_json: true,
             mode: "auto",
+            max_games: 0,
         }
     }
 }
@@ -224,14 +234,21 @@ impl Default for PromptArgs<'_> {
 pub fn do_prompt(out: &Path, args: &PromptArgs) -> Result<Outcome, String> {
     let mut o = Outcome::new();
     let lib = load_library(out)?;
+
+    // 紧凑 JSON 是同一份数据的第二遍，库一大就把 prompt 撑成两倍。
+    // 本机实测 2031 款时，表格本身已经约 240 KB，再附 JSON 会到 480 KB —— 自动关掉并说明。
+    let auto_off_json = args.include_json && lib.games.len() > 200;
+    let include_json = args.include_json && !auto_off_json;
+
     let text = prompt::build(
         &lib,
         &PromptOptions {
             lang: args.lang.to_string(),
             target_collections: args.target,
             max_name_chars: args.max_name,
-            include_json: args.include_json,
+            include_json,
             mode: args.mode.to_string(),
+            max_games: args.max_games,
         },
     );
     let path = out.join(F_PROMPT);
@@ -239,11 +256,23 @@ pub fn do_prompt(out: &Path, args: &PromptArgs) -> Result<Outcome, String> {
 
     let extend = prompt::is_extend_mode(&lib, args.mode);
     o.say(format!("✔ 已生成 {}", path.display()));
+    if auto_off_json {
+        o.say(format!(
+            "  ℹ 库里有 {} 款游戏，已自动省略附录的紧凑 JSON（否则 prompt 会翻倍）",
+            lib.games.len()
+        ));
+    }
     o.say(format!(
         "  长度 {} 字符，约 {} token。",
         text.chars().count(),
         text.len() / 3
     ));
+    if text.len() > 300_000 {
+        o.say(format!(
+            "  ⚠ prompt 偏大（{} KB）。若目标模型上下文吃不下，用 `--max-games 500` 只列未归档优先的前 500 款。",
+            text.len() / 1024
+        ));
+    }
     o.say(format!(
         "  模式：{}",
         if extend {
@@ -488,6 +517,8 @@ pub fn do_inspect(steam_dir: Option<&str>, user: Option<&str>) -> Result<Outcome
     let scanned = scan::run(&ScanOptions {
         steam_dir: steam_dir.map(|s| s.to_string()),
         user: user.map(|s| s.to_string()),
+        // 概览也把「已拥有但未安装」算进来，这样 inspect 与 scan 的数字对得上
+        include_uninstalled: true,
     })?;
     let lib = &scanned.library;
     let s = scan::summarize(lib);

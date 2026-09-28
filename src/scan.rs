@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::appinfo;
 use crate::model::*;
 use crate::steam;
 use crate::util;
@@ -9,6 +10,11 @@ use crate::util;
 pub struct ScanOptions {
     pub steam_dir: Option<String>,
     pub user: Option<String>,
+    /// 是否把「已拥有但未安装」的游戏也纳入。
+    ///
+    /// 一个真实的库往往大部分游戏并没有装（本机：已安装 35 款、被 Steam 记住的 appid 约 1290 个）。
+    /// 但补名字要额外读 45 MB 的 `appcache/appinfo.vdf`，所以留一个开关。
+    pub include_uninstalled: bool,
 }
 
 pub struct ScanOutcome {
@@ -191,6 +197,72 @@ pub fn run(opts: &ScanOptions) -> Result<ScanOutcome, String> {
         }
     }
 
+    // ---- 补上「已拥有但未安装」的游戏 ----
+    //
+    // appmanifest 只覆盖已安装的；`librarycache` 里有「被 Steam 记住的全部 appid」但没有名字，
+    // 所以名字只能去 `appcache/appinfo.vdf` 取（45 MB 的二进制 KeyValues，实测 19423 条、
+    // 19361 条有名字，与 appmanifest 的 35 个名字逐条一致）。
+    //
+    // 这一步刻意做成「失败就降级」：Steam 运行时会**就地重写** appinfo.vdf
+    // （实测会话内文件从 47,370,030 涨到 47,370,333 字节），随时可能读到半截文件。
+    // 读不动就只统计已安装的游戏，并给出可读告警，绝不因此让整次扫描失败。
+    if opts.include_uninstalled {
+        let owned = owned_appids(&install.root, &account.steam3);
+        // 排序后再处理，保证输出顺序稳定（HashSet 的遍历顺序是不确定的）
+        let mut missing: Vec<u32> = owned
+            .iter()
+            .copied()
+            .filter(|id| !seen_appids.contains(id))
+            .collect();
+        missing.sort_unstable();
+
+        if !missing.is_empty() {
+            let mut wanted: HashSet<u32> = HashSet::with_capacity(missing.len());
+            wanted.extend(missing.iter().copied());
+
+            let candidate = install.root.join("appcache").join("appinfo.vdf");
+            let appinfo_path = if candidate.is_file() {
+                Some(candidate)
+            } else {
+                appinfo::default_appinfo_path()
+            };
+
+            match appinfo_path {
+                Some(path) => match appinfo::parse_names(&path, &wanted) {
+                    Ok(entries) => {
+                        for appid in missing.iter().copied() {
+                            let stats = playtime.get(&appid).cloned().unwrap_or_default();
+                            let mut cols = membership.get(&appid).cloned().unwrap_or_default();
+                            cols.sort();
+                            cols.dedup();
+                            let name = entries
+                                .get(&appid)
+                                .map(|e| e.name.trim().to_string())
+                                .filter(|n| !n.is_empty())
+                                .unwrap_or_else(|| format!("App {}", appid));
+                            games.push(make_uninstalled_game(
+                                appid,
+                                &name,
+                                &stats,
+                                cols,
+                                hidden_ids.contains(&appid),
+                                favorite_ids.contains(&appid),
+                            ));
+                        }
+                    }
+                    Err(e) => warnings.push(format!(
+                        "读取 appinfo.vdf 失败，本次只统计已安装的游戏（可用 --installed-only 静默跳过）: {}",
+                        e
+                    )),
+                },
+                None => warnings.push(
+                    "找不到 appcache/appinfo.vdf，「已拥有但未安装」的游戏这次无法补名字，只统计已安装的游戏。"
+                        .into(),
+                ),
+            }
+        }
+    }
+
     games.sort_by(|a, b| {
         b.playtime_minutes
             .cmp(&a.playtime_minutes)
@@ -261,12 +333,109 @@ fn csv_field(s: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// 「已拥有但未安装」
+// ---------------------------------------------------------------------------
+
+/// 这个账号在本机被 Steam 记住的全部 appid。
+///
+/// `appmanifest` 只覆盖**已安装**的游戏，而一个真实的库往往大部分游戏并没装
+/// （本机：已安装 35 款，librarycache 里却有约 1292 个 appid）。这个集合来自两处：
+///   * `userdata/<steam3>/config/librarycache/<appid>.json` 的文件名；
+///   * 现有用户合集的成员。
+///
+/// 注意：librarycache 里**没有游戏名**（已实测），所以这里只给 appid 集合，
+/// 名字要靠 `crate::appinfo` 去 `appcache/appinfo.vdf` 里取。
+pub fn owned_appids(steam_root: &std::path::Path, steam3: &str) -> HashSet<u32> {
+    let mut out: HashSet<u32> = HashSet::new();
+
+    let dir = steam_root
+        .join("userdata")
+        .join(steam3)
+        .join("config")
+        .join("librarycache");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(stem) = name.strip_suffix(".json") {
+                if let Ok(id) = stem.parse::<u32>() {
+                    out.insert(id);
+                }
+            }
+        }
+    }
+
+    if let Ok(cloud) = steam::read_cloud(steam_root, steam3) {
+        for c in &cloud.collections {
+            if c.is_deleted {
+                continue;
+            }
+            out.extend(c.added.iter().copied());
+        }
+    }
+
+    out
+}
+
+/// 把一个「已拥有但未安装」的 appid 变成一条 `Game` 记录。
+///
+/// 这类记录刻意与已安装的区分开：`installed=false`、体积为 0、没有库路径与安装目录。
+/// 但**游玩时长与最后游玩时间是真实的**（卸载不会抹掉 localconfig 里的记录），
+/// 所以「从未启动 / 沉寂」这些派生位照样有意义。
+pub fn make_uninstalled_game(
+    appid: u32,
+    name: &str,
+    stats: &steam::PlayStats,
+    collections: Vec<String>,
+    hidden: bool,
+    favorite: bool,
+) -> Game {
+    let last_played = stats.last_played;
+    let days_since_played = last_played.map(util::days_since);
+    Game {
+        appid,
+        name: if name.trim().is_empty() {
+            format!("(未知名称 {})", appid)
+        } else {
+            name.to_string()
+        },
+        installdir: String::new(),
+        library: String::new(),
+        size_bytes: 0,
+        state_flags: 0,
+        installed: false,
+        last_updated: None,
+        language: None,
+        auto_update: None,
+        franchises: Vec::new(),
+        developers: Vec::new(),
+        publishers: Vec::new(),
+        achievements_total: 0,
+        achievements_unlocked: 0,
+        playtime_minutes: stats.playtime_minutes,
+        playtime_2wks_minutes: stats.playtime_2wks_minutes,
+        last_played,
+        last_played_local: last_played.map(util::fmt_local),
+        collections,
+        hidden,
+        favorite,
+        never_launched: stats.playtime_minutes == 0 && last_played.is_none(),
+        days_since_played,
+        barely_played: stats.playtime_minutes > 0 && stats.playtime_minutes < 60,
+        dormant: days_since_played.map(|d| d > 365).unwrap_or(false),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 概览统计（inspect / 预览头部共用）
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default)]
 pub struct Summary {
     pub games: usize,
+    /// 其中已安装的
+    pub installed: usize,
+    /// 其中「已拥有但未安装」的
+    pub uninstalled: usize,
     pub total_size: u64,
     pub total_playtime_minutes: u64,
     pub never_launched: usize,
@@ -284,6 +453,11 @@ pub fn summarize(lib: &Library) -> Summary {
         ..Default::default()
     };
     for g in &lib.games {
+        if g.installed {
+            s.installed += 1;
+        } else {
+            s.uninstalled += 1;
+        }
         s.total_size += g.size_bytes;
         s.total_playtime_minutes += g.playtime_minutes;
         if g.never_launched {

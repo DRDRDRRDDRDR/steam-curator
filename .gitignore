@@ -6,6 +6,11 @@
 /data/
 *.log
 
+# 一次性逆向/校验工作区（appinfo.vdf 解析实验、Python 参考实现、以及
+# 从本机 dump 出来的 appid→名字 数据），属于过程产物，不入库
+/work/
+__pycache__/
+
 # 编辑器
 .vscode/
 .idea/

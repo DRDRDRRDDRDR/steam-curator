@@ -116,13 +116,14 @@ impl Parsed {
             steam_dir: self.get("steam-dir"),
             user: self.get("user"),
             write_csv: !self.flag("no-csv"),
+            include_uninstalled: !self.flag("installed-only"),
         }
     }
 }
 
 const BOOL_FLAGS: &[&str] = &[
     "help", "version", "write", "force", "prune", "open", "no-csv", "no-json", "latest",
-    "keep-unknown", "allow-empty", "replace", "confirm",
+    "keep-unknown", "allow-empty", "replace", "confirm", "installed-only",
 ];
 
 fn canonical(key: &str) -> String {
@@ -213,6 +214,7 @@ fn step_prompt(p: &Parsed) -> Result<session::Outcome, String> {
             max_name: p.get("max-name").and_then(|s| s.parse().ok()).unwrap_or(14),
             include_json: !p.flag("no-json"),
             mode: &mode,
+            max_games: p.get("max-games").and_then(|s| s.parse().ok()).unwrap_or(0),
         },
     )
 }
@@ -311,6 +313,9 @@ fn print_help() {
 
 scan 选项:
       --no-csv              不生成 library.csv
+      --installed-only      只统计已安装的游戏，不看「已拥有但未安装」的。
+                            默认会把两者都算上（未安装的名字从 appcache/appinfo.vdf 取），
+                            这样 AI 才能替你整理整个库，而不只是磁盘上那几十款。
 
 prompt 选项:
       --lang <zh|en>        模板语言（默认 zh）
@@ -320,6 +325,9 @@ prompt 选项:
                             整理思路。auto（默认）在已有合集 >= 20 个时自动用
                             extend：只补全未归档的游戏，不推倒重来。
       --no-json             prompt 里不附紧凑 JSON
+      --max-games <N>       游戏表最多列 N 行（默认 0 = 不限）。
+                            大库建议设 400~600：表会优先保留**未归档**的游戏。
+                            例：库里有 2031 款时，不限行数会让 prompt 到约 240 KB。
 
 plan 选项:
   -i, --input <文件>        AI 返回内容（默认 <out>/ai-plan.json，也可直接用 -

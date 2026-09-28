@@ -354,6 +354,9 @@ pub fn run(
     raw.extend(new_entries);
     raw.sort_by(|a, b| entry_key(a).cmp(&entry_key(b)));
 
+    // 落盘前自检形状，不合格就整件事中止（原文件保持不变）
+    validate_cloud_array(&raw)?;
+
     let serialized = serde_json::to_string(&raw).map_err(|e| format!("序列化合集文件失败: {}", e))?;
     write_atomically(&cloud.namespace_path, &serialized)?;
 
@@ -493,13 +496,52 @@ fn entry_key(item: &Value) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// 构造一条 cloudstorage 条目。
+///
+/// **必须是 `[key, entry]` 二元组**，这是 Steam 自己的格式（见 docs/STEAM-FORMATS.md），
+/// 也是 `steam::read_cloud` 与 `entry_key` 唯一认得的形状。
+///
+/// 这里曾经误写成裸对象（`json!({...})`），后果很严重：写回的合集自己和 Steam 都读不出来，
+/// 而且 update 路径会先把原有的二元组过滤删除 —— 等于把用户已有的合集在整个文件里抹掉。
+/// 因为这条路径只跑过演练、没在真机上写过，所以一直没暴露。改之前请先看 `validate_cloud_array`。
 fn make_entry(key: &str, value_json: &str, timestamp: i64, version: i64) -> Value {
-    json!({
-        "key": key,
-        "timestamp": timestamp,
-        "value": value_json,
-        "version": version.to_string(),
-    })
+    json!([
+        key,
+        {
+            "key": key,
+            "timestamp": timestamp,
+            "value": value_json,
+            "version": version.to_string(),
+        }
+    ])
+}
+
+/// 写盘前的最后一道闸：确认整个数组的每一项都是 `[key, entry]` 二元组。
+///
+/// 起因见 `make_entry` 的注释 —— 形状错误一旦落盘，就是用户合集被弄丢。
+/// 这类错误必须在写之前拦住：宁可拒绝写入并保留原文件，也不能写出一个 Steam 读不了的文件。
+fn validate_cloud_array(raw: &[Value]) -> Result<(), String> {
+    for (i, item) in raw.iter().enumerate() {
+        let pair = item.as_array().filter(|a| a.len() == 2).ok_or_else(|| {
+            format!(
+                "写回自检失败：第 {} 项不是 [key, entry] 二元组。已放弃写入，你的合集文件未被改动。",
+                i
+            )
+        })?;
+        if pair[0].as_str().is_none() {
+            return Err(format!(
+                "写回自检失败：第 {} 项的 key 不是字符串。已放弃写入，你的合集文件未被改动。",
+                i
+            ));
+        }
+        if !pair[1].is_object() {
+            return Err(format!(
+                "写回自检失败：第 {} 项的 entry 不是对象。已放弃写入，你的合集文件未被改动。",
+                i
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// 手工拼接合集 value，锁定键顺序为 Steam 自己的 `id,name,added,removed`。

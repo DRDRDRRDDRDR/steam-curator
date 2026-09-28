@@ -866,6 +866,7 @@ fn handle_click(
                 steam_dir: None,
                 user: None,
                 write_csv: true,
+                include_uninstalled: true,
             },
         )
     } else if handle == ui.b_prompt.handle {
@@ -877,6 +878,7 @@ fn handle_click(
                 max_name: 14,
                 include_json: true,
                 mode: "auto",
+                max_games: 0,
             },
         )
     } else if handle == ui.b_plan.handle {

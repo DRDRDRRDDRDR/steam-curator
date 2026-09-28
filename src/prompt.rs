@@ -12,6 +12,11 @@ pub struct PromptOptions {
     pub include_json: bool,
     /// auto | fresh | extend
     pub mode: String,
+    /// 游戏表最多列多少行；0 = 不限。
+    ///
+    /// 本机实测：库里有 2031 款游戏时，不限行数会让 prompt 涨到约 240 KB（≈7 万 token）。
+    /// 设了上限就只列前 N 条，并**优先保留未归档的**（那才是要 AI 处理的部分）。
+    pub max_games: usize,
 }
 
 impl Default for PromptOptions {
@@ -22,6 +27,7 @@ impl Default for PromptOptions {
             max_name_chars: 14,
             include_json: true,
             mode: "auto".into(),
+            max_games: 0,
         }
     }
 }
@@ -107,10 +113,28 @@ fn build_zh(lib: &Library, opts: &PromptOptions) -> String {
     }
 
     // ---- 游戏清单 ----
+    //
+    // 大库要控篇幅：`max_games > 0` 时只列前 N 条，并且**未归档的优先**
+    // （lib.games 本身按时长降序，sort_by_key 是稳定排序，所以每一组内部仍按时长排）。
+    let total_games = lib.games.len();
+    let mut shown: Vec<&Game> = lib.games.iter().collect();
+    if opts.max_games > 0 && opts.max_games < total_games {
+        shown.sort_by_key(|g| if g.collections.is_empty() { 0 } else { 1 });
+        shown.truncate(opts.max_games);
+    }
+
     o.push_str("## 二、游戏清单\n\n");
+    if shown.len() < total_games {
+        o.push_str(&format!(
+            "> ⚠️ 本库共 **{}** 款游戏，为控制篇幅，下表只列了 **{}** 款（**未归档的优先**）。\n\
+             > 表中没出现的游戏请**不要**替它们指派合集，也不要猜它们的 appid。\n\n",
+            total_games,
+            shown.len()
+        ));
+    }
     o.push_str("| appid | 名称 | 系列/厂商 | 时长(h) | 体积(GB) | 最后游玩 | 状态 | 现有合集 |\n");
     o.push_str("|---:|---|---|---:|---:|---|---|---|\n");
-    for g in &lib.games {
+    for g in &shown {
         let last = match (g.days_since_played, &g.last_played_local) {
             (Some(d), Some(_)) => {
                 let date = g.last_played_local.clone().unwrap_or_default();
@@ -198,6 +222,7 @@ fn build_zh(lib: &Library, opts: &PromptOptions) -> String {
         o.push_str("**最近 60 天玩过（说明是当下主力）**：\n");
         let names: Vec<String> = recent
             .iter()
+            .take(60)
             .map(|g| format!("{}({}天前)", g.name, g.days_since_played.unwrap_or(0)))
             .collect();
         o.push_str(&format!("{}\n\n", names.join("、")));
@@ -215,14 +240,22 @@ fn build_zh(lib: &Library, opts: &PromptOptions) -> String {
         .iter()
         .filter(|(_, v)| v.len() >= 2)
         .collect();
+    let group_total = groups.len();
     if !groups.is_empty() {
         o.push_str("**官方「系列」字段分组（Steam 自己标注的同系列作品，可直接作为一个合集）**：\n");
+        let mut printed = 0usize;
         for (f, games) in groups {
+            if printed >= 60 {
+                o.push_str(&format!("（其余 {} 个系列未列出）\n", group_total - printed));
+                break;
+            }
             let names: Vec<String> = games
                 .iter()
+                .take(40)
                 .map(|g| format!("{}[{}]", g.name, g.appid))
                 .collect();
             o.push_str(&format!("- {}：{}\n", f, names.join("、")));
+            printed += 1;
         }
         o.push('\n');
     }
@@ -239,7 +272,11 @@ fn build_zh(lib: &Library, opts: &PromptOptions) -> String {
             unassigned.len(),
             if extend { " —— 本次整理的主要目标" } else { "" }
         ));
+        let mut listed = 0usize;
         for g in &unassigned {
+            if listed >= 80 {
+                break;
+            }
             o.push_str(&format!(
                 "- {}(appid {}) · {} · 玩过 {} · 最后游玩 {}\n",
                 g.name,
@@ -247,6 +284,13 @@ fn build_zh(lib: &Library, opts: &PromptOptions) -> String {
                 util::fmt_size(g.size_bytes),
                 util::fmt_duration(g.playtime_minutes),
                 g.last_played_local.clone().unwrap_or_else(|| "从未启动".into())
+            ));
+            listed += 1;
+        }
+        if unassigned.len() > listed {
+            o.push_str(&format!(
+                "（其余 {} 款未逐条列出，请以上面的游戏清单表格为准）\n",
+                unassigned.len() - listed
             ));
         }
         o.push('\n');

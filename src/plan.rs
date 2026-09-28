@@ -316,7 +316,7 @@ fn find_existing<'a>(lib: &'a Library, name: &str) -> Option<&'a CollectionInfo>
     let candidates: Vec<&CollectionInfo> = lib
         .existing_collections
         .iter()
-        .filter(|e| !e.is_builtin && !e.is_dynamic)
+        .filter(|e| !e.is_builtin && !e.is_dynamic && !e.is_deleted)
         .collect();
     if let Some(e) = candidates.iter().find(|e| e.name == name) {
         return Some(e);
@@ -354,20 +354,35 @@ pub fn extract_json(text: &str) -> String {
         };
         let body = body.trim();
         if !body.is_empty() {
-            return body.to_string();
+            return pick_json(body).unwrap_or_else(|| body.to_string());
         }
     }
-    if let (Some(a), Some(b)) = (t.find('{'), t.rfind('}')) {
-        if a < b {
-            return t[a..=b].to_string();
+    pick_json(t).unwrap_or_else(|| t.to_string())
+}
+
+/// 从一段夹着寒暄的文字里挑出 JSON 主体。
+///
+/// 不能简单地「先找 `{`、再找 `[`」：像 `[{"name":"A","appids":[100]}]` 这种**顶层裸数组**，
+/// 先命中 `{` 会只切出内层对象，于是 `extract_collections` 退化成「键名 → id 数组」的形态，
+/// **合集名被当成数组键名**（实测变成 "apps" / "appids"），而且因为名字全一样还会被同名合并成一个。
+/// 这是静默错误：成员 appid 是对的，错了也不容易看出来；merge 模式下还会真把这个垃圾合集建进库里。
+///
+/// 这里改为「两种切法都做，优先能真正解析成 JSON 的那个；都能解析时取起点更靠前的」
+/// （起点更靠前的更可能是真正的顶层）。这样纯对象的寒暄、纯数组、以及「寒暄里带方括号」几类都能各归各位。
+fn pick_json(t: &str) -> Option<String> {
+    let mut scored: Vec<(bool, usize, String)> = Vec::new();
+    for (open, close) in [('{', '}'), ('[', ']')] {
+        if let (Some(a), Some(b)) = (t.find(open), t.rfind(close)) {
+            if a < b {
+                let s = t[a..=b].to_string();
+                let ok = serde_json::from_str::<Value>(&s).is_ok();
+                scored.push((ok, a, s));
+            }
         }
     }
-    if let (Some(a), Some(b)) = (t.find('['), t.rfind(']')) {
-        if a < b {
-            return t[a..=b].to_string();
-        }
-    }
-    t.to_string()
+    // 可解析的优先；同档取起点更早的
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    scored.into_iter().next().map(|(_, _, s)| s)
 }
 
 fn extract_collections(v: &Value) -> Result<Vec<(String, Option<String>, Vec<u32>)>, String> {

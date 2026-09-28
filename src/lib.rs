@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 pub mod apply;
+pub mod appinfo;
 pub mod model;
 pub mod plan;
 pub mod preview;
