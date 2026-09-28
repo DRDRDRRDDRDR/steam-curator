@@ -3,19 +3,54 @@ name = "steam-curator"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.74"
-description = "Steam 库整理器：本地扫描 → AI 整理 → 预览 → 写回 Steam 合集"
+description = "Steam 库整理器：本地扫描 → AI 整理 → 预览 → 写回 Steam 合集（CLI + 原生 GUI）"
 license = "MIT"
 repository = "https://github.com/DRDRDRRDDRDR/steam-curator"
-keywords = ["steam", "library", "collections", "cli"]
+keywords = ["steam", "library", "collections", "cli", "gui"]
 categories = ["command-line-utilities"]
 
+[lib]
+name = "steam_curator"
+path = "src/lib.rs"
+
+# 命令行版本：始终构建，零额外依赖
 [[bin]]
 name = "steam-curator"
 path = "src/main.rs"
 
+# 原生图形界面：Windows 上的 Win32 窗口
+[[bin]]
+name = "steam-curator-gui"
+path = "src/bin/gui.rs"
+required-features = ["gui"]
+
+[features]
+default = ["gui"]
+gui = ["dep:native-windows-gui"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# 只开用得到的控件；刻意不启用 plotting / image-decoder / flexbox 那几组重依赖
+native-windows-gui = { version = "1.0.13", optional = true, default-features = false, features = [
+    "textbox",
+    "rich-textbox",
+    "notice",
+    "progress-bar",
+    "frame",
+    "status-bar",
+    "cursor",
+    "clipboard",
+    "menu",
+    "file-dialog",
+    "message-window",
+    "combobox",
+    "listbox",
+    "list-view",
+    "tabs",
+    "fancy-window",
+] }
 
 [profile.release]
 opt-level = "s"
